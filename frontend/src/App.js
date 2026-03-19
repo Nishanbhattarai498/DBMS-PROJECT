@@ -16,12 +16,18 @@ function AppContent() {
   // eslint-disable-next-line no-unused-vars
   const location = useLocation(); // Triggers re-render when route changes
   const role = getRole();
+  const authenticated = isAuthenticated();
+  const defaultDashboard = role === 'student' ? '/student-dashboard' : '/dashboard';
 
   return (
     <Routes>
-      <Route path="/" element={<Login />} />
+      <Route
+        path="/"
+        element={<Navigate to={authenticated ? defaultDashboard : '/login'} replace />}
+      />
+      <Route path="/login" element={<Login />} />
 
-      {isAuthenticated() ? (
+      {authenticated ? (
         <Route
           path="/*"
           element={
@@ -35,7 +41,7 @@ function AppContent() {
                       <>
                         <Route path="/student-dashboard" element={<StudentDashboard />} />
                         <Route path="/search-books" element={<Books />} />
-                        <Route path="*" element={<Navigate to="/student-dashboard" />} />
+                        <Route path="*" element={<Navigate to="/student-dashboard" replace />} />
                       </>
                     ) : (
                       <>
@@ -43,7 +49,7 @@ function AppContent() {
                         <Route path="/books" element={<Books />} />
                         <Route path="/users" element={<Users />} />
                         <Route path="/issues" element={<Issue />} />
-                        <Route path="*" element={<Navigate to="/dashboard" />} />
+                        <Route path="*" element={<Navigate to="/dashboard" replace />} />
                       </>
                     )}
                   </Routes>
@@ -53,7 +59,7 @@ function AppContent() {
           }
         />
       ) : (
-        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       )}
     </Routes>
   );

@@ -7,7 +7,7 @@ import {
   Users, 
   ArrowLeftRight, 
   Library,
-  ChevronLeft,
+  
   Search
 } from 'lucide-react';
 import { getRole } from '../services/authService';

@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Plus, 
+   
   RotateCw, 
-  Calendar, 
-  User, 
+   
+   
   BookOpen, 
   Filter, 
   Loader2, 
-  X, 
+   
   CheckCircle2, 
   AlertCircle,
   Clock,

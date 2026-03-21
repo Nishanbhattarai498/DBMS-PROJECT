@@ -138,6 +138,14 @@ const StudentDashboard = () => {
             <form onSubmit={handleProfileUpdate} className="p-8 space-y-6">
               <div className="space-y-4">
                 <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Student ID</label>
+                  <input
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-indigo-500/50 focus:bg-white transition-all outline-none text-slate-900 font-medium"
+                    value={profileData.student_id}
+                    onChange={(e) => setProfileData({ ...profileData, student_id: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Semester</label>
                   <input
                     type="number"

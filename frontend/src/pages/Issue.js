@@ -30,7 +30,10 @@ const Issue = () => {
   const [pagination, setPagination] = useState({ pages: 1 });
   const [status, setStatus] = useState('all');
   const [showIssueForm, setShowIssueForm] = useState(false);
-  
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [userDeptFilter, setUserDeptFilter] = useState('');
+  const [userBatchFilter, setUserBatchFilter] = useState('');
+
   const [issueForm, setIssueForm] = useState({
     book_id: '',
     user_id: '',
@@ -105,6 +108,13 @@ const Issue = () => {
       setError('System error during return');
     }
   };
+
+  const filteredUsers = users.filter(user => {
+    const matchSearch = userSearchTerm ? (user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) || (user.student_id && user.student_id.toLowerCase().includes(userSearchTerm.toLowerCase()))) : true;
+    const matchDept = userDeptFilter ? (user.department && user.department.toLowerCase() === userDeptFilter.toLowerCase()) : true;
+    const matchBatch = userBatchFilter ? (user.batch_year && user.batch_year.toString() === userBatchFilter) : true;
+    return matchSearch && matchDept && matchBatch;
+  });
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
@@ -308,7 +318,7 @@ const Issue = () => {
                 <p className="text-slate-500 font-medium mt-2">Map catalog items to library members.</p>
                 
                 <form onSubmit={handleIssueBook} className="w-full mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
-                  <div className="space-y-2">
+                  <div className="space-y-2 md:col-span-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Select Catalog Item</label>
                     <select
                       required
@@ -323,7 +333,40 @@ const Issue = () => {
                     </select>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Search & Filter Members</label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <input 
+                        type="text" 
+                        placeholder="Search name or ID..." 
+                        value={userSearchTerm} 
+                        onChange={(e) => setUserSearchTerm(e.target.value)} 
+                        className="w-full px-5 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-rose-500/20 text-slate-900 font-medium"
+                      />
+                      <select 
+                        value={userDeptFilter} onChange={(e) => setUserDeptFilter(e.target.value)}
+                        className="w-full px-5 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-rose-500/20 text-slate-900 font-medium appearance-none"
+                      >
+                         <option value="">All Departments</option>
+                         <option value="BAM">BAM</option>
+                         <option value="BCT">BCT</option>
+                         <option value="BEX">BEX</option>
+                         <option value="BCE">BCE</option>
+                         <option value="BME">BME</option>
+                         <option value="BEI">BEI</option>
+                         <option value="BGE">BGE</option>
+                         <option value="BAR">BAR</option>
+                      </select>
+                      <input 
+                         type="number" 
+                         placeholder="Batch (e.g. 2079)" 
+                         value={userBatchFilter} onChange={(e) => setUserBatchFilter(e.target.value)}
+                         className="w-full px-5 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-rose-500/20 text-slate-900 font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Select Recipient</label>
                     <select
                       required
@@ -332,8 +375,13 @@ const Issue = () => {
                       className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-rose-500/20 text-slate-900 font-bold appearance-none bg-no-repeat bg-[right_1.25rem_center]"
                     >
                       <option value="">Choose Member...</option>
-                      {users.map(user => (
-                        <option key={user.id} value={user.id}>{user.name}</option>
+                      {filteredUsers.map(user => (
+                        <option key={user.id} value={user.id}>
+                          {user.name} 
+                          {user.student_id ? ` (SID: ${user.student_id})` : ''} 
+                          {user.department ? ` - ${user.department}` : ''}
+                          {user.batch_year ? ` ${user.batch_year}` : ''}
+                        </option>
                       ))}
                     </select>
                   </div>

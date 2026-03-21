@@ -153,7 +153,6 @@ const updateUser = async (req, res) => {
       // Ignore attempts to change fundamental identity fields
       name = undefined;
       email = undefined;
-      student_id = undefined;
     }
 
     const connection = await pool.getConnection();

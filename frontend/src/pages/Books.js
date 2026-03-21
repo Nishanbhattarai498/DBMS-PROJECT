@@ -174,11 +174,14 @@ const Books = () => {
             className="w-full pl-12 pr-10 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-blue-500/20 appearance-none text-slate-700 font-medium"
           >
             <option value="">All Faculties</option>
-            <option value="Engineering">Engineering</option>
-            <option value="Computer Science">Computer Science</option>
-            <option value="Business">Business</option>
-            <option value="Arts">Arts</option>
-            <option value="Medicine">Medicine</option>
+            <option value="BAM">BAM</option>
+            <option value="BCT">BCT</option>
+            <option value="BEX">BEX</option>
+            <option value="BCE">BCE</option>
+            <option value="BME">BME</option>
+            <option value="BEI">BEI</option>
+            <option value="BGE">BGE</option>
+            <option value="BAR">BAR</option>
           </select>
         </div>
       </div>
@@ -339,10 +342,14 @@ const Books = () => {
                         onChange={(e) => setFormData({ ...formData, faculty: e.target.value })}
                       >
                         <option value="">Select Faculty</option>
-                        <option value="Engineering">Engineering</option>
-                        <option value="Computer Science">Computer Science</option>
-                        <option value="Business">Business</option>
-                        <option value="Arts">Arts</option>
+                        <option value="BAM">BAM</option>
+                        <option value="BCT">BCT</option>
+                        <option value="BEX">BEX</option>
+                        <option value="BCE">BCE</option>
+                        <option value="BME">BME</option>
+                        <option value="BEI">BEI</option>
+                        <option value="BGE">BGE</option>
+                        <option value="BAR">BAR</option>
                       </select>
                     </div>
                     <div className="grid gap-2">

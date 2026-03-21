@@ -34,8 +34,8 @@ export const updateBook = (id, bookData) => api.put(`/books/${id}`, bookData);
 export const deleteBook = (id) => api.delete(`/books/${id}`);
 
 // User APIs
-export const getUsers = (page = 1, limit = 10, search = '') =>
-  api.get('/users', { params: { page, limit, search } });
+export const getUsers = (page = 1, limit = 10, search = '', department = '', batch_year = '') =>
+  api.get('/users', { params: { page, limit, search, department, batch_year } });
 
 export const getUserById = (id) => api.get(`/users/${id}`);
 

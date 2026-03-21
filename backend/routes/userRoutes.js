@@ -10,10 +10,18 @@ const {
 
 const router = express.Router();
 
+const isSelfOrAdmin = (req, res, next) => {
+  if (req.user && (req.user.role === 'admin' || req.user.id == req.params.id)) {
+    next();
+  } else {
+    res.status(403).json({ message: 'Access denied' });
+  }
+};
+
 router.get('/', verifyToken, isAdmin, getAllUsers);
-router.get('/:id', verifyToken, isAdmin, getUserById); // Or self
+router.get('/:id', verifyToken, isSelfOrAdmin, getUserById);
 router.post('/', verifyToken, isAdmin, addUser);
-router.put('/:id', verifyToken, isAdmin, updateUser);
+router.put('/:id', verifyToken, isSelfOrAdmin, updateUser);
 router.delete('/:id', verifyToken, isAdmin, deleteUser);
 
 module.exports = router;

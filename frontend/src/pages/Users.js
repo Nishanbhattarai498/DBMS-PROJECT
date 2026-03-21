@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-   
-  Search, 
-  UserPlus, 
+import {
+  Filter,
+  Search,
+  UserPlus,
   Edit2, 
   Trash2, 
   Mail, 
@@ -26,6 +26,8 @@ const Users = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('');
+  const [batchYearFilter, setBatchYearFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ pages: 1, total: 0 });
   const [showForm, setShowForm] = useState(false);
@@ -36,13 +38,13 @@ const Users = () => {
     phone: '',
     address: '',
     password: '',
-    role: 'student',
+    role: 'student', student_id: '', semester: '', department: '', batch_year: '',
   });
 
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await getUsers(page, 10, search);
+      const response = await getUsers(page, 10, search, departmentFilter, batchYearFilter);
       setUsers(response.data.users);
       setPagination(response.data.pagination);
     } catch (err) {
@@ -50,7 +52,7 @@ const Users = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, departmentFilter, batchYearFilter]);
 
   useEffect(() => {
     fetchUsers();
@@ -97,7 +99,7 @@ const Users = () => {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', email: '', phone: '', address: '', password: '', role: 'student' });
+    setFormData({ name: '', email: '', phone: '', address: '', password: '', role: 'student', student_id: '', semester: '', department: '', batch_year: '' });
     setEditingId(null);
     setShowForm(false);
   };
@@ -154,8 +156,8 @@ const Users = () => {
       </AnimatePresence>
 
       {/* Control Bar */}
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-        <div className="relative flex-1 group">
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-4">
+        <div className="relative flex-1 w-full group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
           <input
             type="text"
@@ -164,6 +166,28 @@ const Users = () => {
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="w-full pl-12 pr-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 transition-all text-slate-700 font-medium"
           />
+        </div>
+        <div className="flex gap-4 w-full md:w-auto">
+          <div className="relative flex-1 md:w-48 group">
+            <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+            <input
+              type="text"
+              placeholder="Faculty/Dept..."
+              value={departmentFilter}
+              onChange={(e) => { setDepartmentFilter(e.target.value); setPage(1); }}
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 transition-all text-slate-700 text-sm font-medium"
+            />
+          </div>
+          <div className="relative flex-1 md:w-36 group">
+            <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+            <input
+              type="number"
+              placeholder="Batch Year..."
+              value={batchYearFilter}
+              onChange={(e) => { setBatchYearFilter(e.target.value); setPage(1); }}
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 transition-all text-slate-700 text-sm font-medium"
+            />
+          </div>
         </div>
       </div>
 
@@ -205,6 +229,14 @@ const Users = () => {
                         <div>
                           <div className="font-bold text-slate-900">{user.name}</div>
                           <div className="text-xs text-slate-400">ID: #{user.id.toString().padStart(4, '0')}</div>
+                          {user.role === 'student' && (
+                            <div className="text-[10px] text-slate-500 mt-1 flex gap-2 font-medium flex-wrap">
+                              {user.student_id && <span><span className="text-indigo-400 uppercase tracking-wider">SID:</span> {user.student_id}</span>}
+                              {user.department && <span className="flex items-center gap-1 before:content-['•'] before:text-slate-300 before:mx-0.5"><span className="text-indigo-400 uppercase tracking-wider">Dept:</span> {user.department}</span>}
+                              {user.semester && <span className="flex items-center gap-1 before:content-['•'] before:text-slate-300 before:mx-0.5"><span className="text-indigo-400 uppercase tracking-wider">Sem:</span> {user.semester}</span>}
+                              {user.batch_year && <span className="flex items-center gap-1 before:content-['•'] before:text-slate-300 before:mx-0.5"><span className="text-indigo-400 uppercase tracking-wider">Batch:</span> {user.batch_year}</span>}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -366,6 +398,45 @@ const Users = () => {
                       onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     />
                   </div>
+
+                  {formData.role === 'student' && (
+                    <>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Student ID</label>
+                        <input
+                          className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-indigo-500/50 focus:bg-white transition-all outline-none text-slate-900 font-medium"
+                          value={formData.student_id || ''}
+                          onChange={(e) => setFormData({ ...formData, student_id: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Department</label>
+                        <input
+                          className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-indigo-500/50 focus:bg-white transition-all outline-none text-slate-900 font-medium"
+                          value={formData.department || ''}
+                          onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Semester</label>
+                        <input
+                          type="number"
+                          className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-indigo-500/50 focus:bg-white transition-all outline-none text-slate-900 font-medium"
+                          value={formData.semester || ''}
+                          onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Batch Year</label>
+                        <input
+                          type="number"
+                          className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-indigo-500/50 focus:bg-white transition-all outline-none text-slate-900 font-medium"
+                          value={formData.batch_year || ''}
+                          onChange={(e) => setFormData({ ...formData, batch_year: e.target.value })}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="pt-2 flex gap-3">
@@ -386,3 +457,6 @@ const Users = () => {
 };
 
 export default Users;
+
+
+

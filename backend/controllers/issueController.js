@@ -365,31 +365,71 @@ const getUserIssuedBooks = async (req, res) => {
 // ==========================================
 const getDashboardStats = async (req, res) => {
   try {
-    // Collects 4 crucial aggregate numbers for the Admin dashboard UI
-    
     // Total physical books
     const [totalBooks] = await pool.query('SELECT SUM(total_quantity) as total FROM books');
     // Total students registered
     const [totalStudents] = await pool.query('SELECT COUNT(*) as total FROM users WHERE role = "student"');
     // Currently checked out books
     const [activeIssues] = await pool.query('SELECT COUNT(*) as total FROM issued_books WHERE status = "issued"');
+    // Books that are returned
+    const [returnedBooks] = await pool.query('SELECT COUNT(*) as total FROM issued_books WHERE status = "returned"');
     // Books that are checked out AND past their due date
     const [overdueBooks] = await pool.query('SELECT COUNT(*) as total FROM issued_books WHERE status = "issued" AND due_date < CURRENT_DATE');
+    // New students in the last 7 days
+    const [newStudents] = await pool.query('SELECT COUNT(*) as total FROM users WHERE role = "student" AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
 
-    // Advanced Stats for Recharts Graphs (Books categorized by their Faculty field)
-    const [facultyStats] = await pool.query('SELECT faculty as name, COUNT(*) as value FROM books GROUP BY faculty');
+    // Generate chart data for the last 7 days
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const chartDataMap = {};
+    
+    // Initialize last 7 days
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayName = days[d.getDay()];
+      chartDataMap[dateStr] = { name: dayName, issued: 0, returned: 0 };
+    }
 
-    // Return the bundle to the frontend
+    // Fetch activity for the last 7 days
+    const [recentActivity] = await pool.query(`
+      SELECT issued_date, return_date, status 
+      FROM issued_books 
+      WHERE issued_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) 
+         OR (status = 'returned' AND return_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY))
+    `);
+
+    // Aggregate counts by date
+    recentActivity.forEach(record => {
+      if (record.issued_date) {
+        const iDate = new Date(record.issued_date).toISOString().split('T')[0];
+        if (chartDataMap[iDate]) {
+          chartDataMap[iDate].issued += 1;
+        }
+      }
+      if (record.status === 'returned' && record.return_date) {
+        const rDate = new Date(record.return_date).toISOString().split('T')[0];
+        if (chartDataMap[rDate]) {
+          chartDataMap[rDate].returned += 1;
+        }
+      }
+    });
+
+    const chartData = Object.values(chartDataMap);
+
+    // Return the specific object keys exactly matching what the frontend expects
     res.json({
-      totalBooks: totalBooks[0].total || 0,
-      totalStudents: totalStudents[0].total || 0,
-      activeIssues: activeIssues[0].total || 0,
-      overdueBooks: overdueBooks[0].total || 0,
-      facultyStats
+      totalBooks: Number(totalBooks[0].total) || 0,
+      totalUsers: Number(totalStudents[0].total) || 0,
+      issuedBooks: Number(activeIssues[0].total) || 0,
+      returnedBooks: Number(returnedBooks[0].total) || 0,
+      overdueBooks: Number(overdueBooks[0].total) || 0,
+      newStudents: Number(newStudents[0].total) || 0,
+      chartData
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Dashboard Stats Error:', error);
+    res.status(500).json({ message: 'Server error retrieving dashboard stats' });
   }
 };
 

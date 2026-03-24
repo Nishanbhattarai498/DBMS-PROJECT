@@ -9,7 +9,7 @@ require('dotenv').config(); // Load environment variables from .env file securel
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'password', // Ensure '.env' handles this normally!
+  password: process.env.DB_PASSWORD || "", // Ensure '.env' handles this normally!
   database: process.env.DB_NAME || 'library_management',
   
   // Wait for connections if they are all currently being used

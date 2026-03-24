@@ -16,7 +16,7 @@ const bootstrapSchema = async () => {
     connection = await mysql.createConnection({
       host: process.env.DB_HOST || 'localhost',
       user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || 'password',
+      password: process.env.DB_PASSWORD || "",
       multipleStatements: true, // Crucial: Allows us to execute dozens of SQL commands in a single payload
     });
 

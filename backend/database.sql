@@ -6,16 +6,18 @@ USE library_management;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS issued_books;
-DROP TABLE IF EXISTS book_copies;
-DROP TABLE IF EXISTS student_profiles;
-DROP TABLE IF EXISTS users;
-DROP TABLE IF EXISTS admin;
-DROP TABLE IF EXISTS books;
+-- DO NOT DROP TABLES ON RESTART! THIS WILL DELETE ALL DATA.
+-- Only uncomment these lines for a complete factory reset.
+-- DROP TABLE IF EXISTS issued_books;
+-- DROP TABLE IF EXISTS book_copies;
+-- DROP TABLE IF EXISTS student_profiles;
+-- DROP TABLE IF EXISTS users;
+-- DROP TABLE IF EXISTS admin;
+-- DROP TABLE IF EXISTS books;
 
 SET FOREIGN_KEY_CHECKS = 1;
 
-CREATE TABLE admin (
+CREATE TABLE IF NOT EXISTS admin (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(50) NOT NULL UNIQUE,
   email VARCHAR(100) NOT NULL UNIQUE,
@@ -23,7 +25,7 @@ CREATE TABLE admin (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   email VARCHAR(100) NOT NULL UNIQUE,
@@ -37,7 +39,7 @@ CREATE TABLE users (
   INDEX idx_user_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE student_profiles (
+CREATE TABLE IF NOT EXISTS student_profiles (
   user_id INT UNSIGNED PRIMARY KEY,
   student_id VARCHAR(50) UNIQUE,
   semester INT DEFAULT NULL,
@@ -50,7 +52,7 @@ CREATE TABLE student_profiles (
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE books (
+CREATE TABLE IF NOT EXISTS books (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   title VARCHAR(200) NOT NULL,
   author VARCHAR(100) NOT NULL,
@@ -63,7 +65,7 @@ CREATE TABLE books (
   INDEX idx_book_isbn (isbn)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE book_copies (
+CREATE TABLE IF NOT EXISTS book_copies (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   book_id INT UNSIGNED NOT NULL,
   copy_number INT NOT NULL,
@@ -80,7 +82,7 @@ CREATE TABLE book_copies (
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE issued_books (
+CREATE TABLE IF NOT EXISTS issued_books (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   copy_id INT UNSIGNED NOT NULL,
   book_id INT UNSIGNED NOT NULL,
@@ -113,5 +115,6 @@ CREATE TABLE issued_books (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Default admin (password for admin123)
-INSERT INTO admin (username, email, password)
+-- Uses IGNORE so it doesn't crash the server if the admin already exists
+INSERT IGNORE INTO admin (username, email, password)
 VALUES ('admin', 'admin@library.com', '$2a$10$0YjbRpisSOtnYM7Ua9CDs.bbOSA5wS6yQ7QZfaJC6bEQ4B2bXAeUu');

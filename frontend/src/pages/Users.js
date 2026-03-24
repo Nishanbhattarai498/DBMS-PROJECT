@@ -35,6 +35,7 @@ const Users = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    username: '',
     phone: '',
     address: '',
     password: '',
@@ -111,7 +112,7 @@ const Users = () => {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', email: '', phone: '', address: '', password: '', role: 'student', student_id: '', semester: '', department: '', batch_year: '' });
+    setFormData({ name: '', email: '', username: '', phone: '', address: '', password: '', role: 'student', student_id: '', semester: '', department: '', batch_year: '' });
     setEditingId(null);
     setShowForm(false);
   };
@@ -367,8 +368,15 @@ const Users = () => {
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     />
-                  </div>
-                  <div className="space-y-2">
+                  </div>                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Username</label>
+                      <input
+                        required
+                        className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-indigo-500/50 focus:bg-white transition-all outline-none text-slate-900 font-medium"
+                        value={formData.username}
+                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                      />
+                    </div>                  <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Phone Number</label>
                     <input
                       type="tel"

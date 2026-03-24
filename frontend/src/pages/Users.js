@@ -58,6 +58,18 @@ const Users = () => {
     fetchUsers();
   }, [fetchUsers]);
 
+  useEffect(() => {
+    if (showForm) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showForm]);
+
   // Auto-clear messages
   useEffect(() => {
     if (error || success) {
@@ -111,7 +123,7 @@ const Users = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 pb-10">
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
@@ -207,7 +219,7 @@ const Users = () => {
             <p className="text-slate-500">Add your first library member to get started.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-auto max-h-[56vh]">
             <table className="w-full">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
@@ -314,14 +326,14 @@ const Users = () => {
       {/* Modal Form */}
       <AnimatePresence>
         {showForm && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
+          <div className="fixed inset-0 z-[100] overflow-y-auto p-4 sm:p-6 bg-slate-900/50 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-[2rem] shadow-2xl w-full max-w-xl overflow-hidden border border-slate-100"
+              className="bg-white rounded-[1.5rem] sm:rounded-[2rem] shadow-2xl w-full max-w-xl overflow-hidden border border-slate-100 mx-auto my-4 sm:my-8 max-h-[92vh] flex flex-col"
             >
-              <div className="px-8 pt-8 pb-4 flex justify-between items-center bg-indigo-50/30">
+              <div className="px-6 sm:px-8 pt-6 sm:pt-8 pb-4 flex justify-between items-center bg-indigo-50/30 border-b border-slate-100 sticky top-0 z-10">
                 <div>
                   <h2 className="text-2xl font-black text-slate-900">
                     {editingId ? 'Update Member' : 'New Registration'}
@@ -335,7 +347,7 @@ const Users = () => {
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-8 space-y-6">
+              <form onSubmit={handleSubmit} className="px-6 sm:px-8 py-6 space-y-6 overflow-y-auto">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Full Name</label>
@@ -439,7 +451,7 @@ const Users = () => {
                   )}
                 </div>
 
-                <div className="pt-2 flex gap-3">
+                <div className="pt-2 flex gap-3 sticky bottom-0 bg-gradient-to-t from-white via-white to-white/90 pb-1 border-t border-slate-100">
                   <button
                     type="submit"
                     className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all active:scale-[0.98]"

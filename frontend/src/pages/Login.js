@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loginAdmin } from '../services/apiService';
 import { setToken, setUser } from '../services/authService';
-import { motion } from 'framer-motion';
-import { FiBookOpen, FiAlertCircle, FiUser, FiLock, FiArrowRight } from 'react-icons/fi';
+import { FiAlertCircle, FiArrowRight, FiBookOpen, FiLock, FiUser } from 'react-icons/fi';
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -41,120 +40,77 @@ const Login = () => {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-950">
-      <div className="pointer-events-none absolute -top-40 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-40 -right-28 h-[26rem] w-[26rem] rounded-full bg-blue-600/25 blur-3xl" />
-      <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(148,163,184,0.25) 1px, transparent 0)', backgroundSize: '24px 24px' }} />
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-blue-600 via-sky-100 to-white flex items-center justify-center px-4 py-8">
+      <div className="pointer-events-none absolute -top-24 -left-16 h-72 w-72 rounded-full bg-cyan-300/40 blur-3xl" />
+      <div className="pointer-events-none absolute top-1/3 -right-20 h-80 w-80 rounded-full bg-blue-300/35 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 left-1/3 h-72 w-72 rounded-full bg-indigo-200/40 blur-3xl" />
 
-      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-4 py-8 sm:px-6 lg:px-8">
-        <div className="grid w-full gap-8 lg:grid-cols-2 lg:gap-12">
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="hidden rounded-3xl border border-slate-700/40 bg-slate-900/60 p-10 backdrop-blur-xl lg:block"
-          >
-            <div className="mb-10 flex items-center gap-3">
-              <div className="rounded-2xl bg-cyan-500/20 p-3 text-cyan-300">
-                <FiBookOpen size={24} />
-              </div>
-              <div>
-                <p className="text-2xl font-extrabold tracking-tight text-white">LibMaster</p>
-                <p className="text-sm text-slate-400">Digital Knowledge Hub</p>
-              </div>
-            </div>
-
-            <h1 className="max-w-md text-4xl font-black leading-tight text-white">
-              Access Your Library Workspace In Seconds
-            </h1>
-            <p className="mt-4 max-w-md text-slate-300">
-              Manage books, students, issues, returns, and real-time stats from one modern control panel.
-            </p>
-
-            <div className="mt-10 space-y-4">
-              <div className="rounded-2xl border border-slate-700/50 bg-slate-800/50 px-4 py-3 text-slate-300">
-                Fast admin and student access
-              </div>
-              <div className="rounded-2xl border border-slate-700/50 bg-slate-800/50 px-4 py-3 text-slate-300">
-                Dashboard insights with live updates
-              </div>
-              <div className="rounded-2xl border border-slate-700/50 bg-slate-800/50 px-4 py-3 text-slate-300">
-                Fine tracking and automated notifications
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.05 }}
-            className="w-full"
-          >
-            <div className="rounded-3xl border border-slate-700/40 bg-slate-900/70 p-6 shadow-2xl backdrop-blur-xl sm:p-8">
-              <div className="mb-8 text-center lg:text-left">
-                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-500/20 text-cyan-300 lg:mx-0">
-                  <FiBookOpen size={24} />
-                </div>
-                <h2 className="text-3xl font-extrabold tracking-tight text-white">Welcome Back</h2>
-                <p className="mt-2 text-slate-300">Sign in to continue to your dashboard.</p>
-              </div>
-
-              {error && (
-                <div className="mb-6 flex items-start gap-3 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4">
-                  <FiAlertCircle className="mt-0.5 flex-shrink-0 text-rose-300" />
-                  <p className="text-sm text-rose-200">{error}</p>
-                </div>
-              )}
-
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-200">Username</label>
-                  <div className="group relative">
-                    <FiUser className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-cyan-300" />
-                    <input
-                      type="text"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="Enter your username"
-                      className="w-full rounded-xl border border-slate-700 bg-slate-800/70 py-3 pl-11 pr-4 text-slate-100 placeholder-slate-400 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-200">Password</label>
-                  <div className="group relative">
-                    <FiLock className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-cyan-300" />
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      className="w-full rounded-xl border border-slate-700 bg-slate-800/70 py-3 pl-11 pr-4 text-slate-100 placeholder-slate-400 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="group mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {loading ? 'Logging in...' : 'Login'}
-                  {!loading && <FiArrowRight className="transition-transform group-hover:translate-x-0.5" />}
-                </button>
-              </form>
-
-              <div className="mt-7 rounded-2xl border border-slate-700/60 bg-slate-800/60 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">Demo Credentials</p>
-                <p className="mt-2 text-xs text-slate-300">Admin: <span className="font-mono text-cyan-300">admin</span> / <span className="font-mono text-cyan-300">admin123</span></p>
-                <p className="mt-1 text-xs text-slate-300">Student: <span className="font-mono text-cyan-300">student</span> / <span className="font-mono text-cyan-300">student123</span></p>
-              </div>
-            </div>
-          </motion.div>
+      <div className="relative w-full max-w-md rounded-3xl border border-white/70 bg-white/85 backdrop-blur-xl shadow-[0_20px_70px_-25px_rgba(15,23,42,0.45)] p-6 sm:p-8">
+        <div className="mb-6 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-300/60">
+            <FiBookOpen size={22} />
+          </div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Welcome</h1>
+          <p className="mt-2 text-sm text-slate-600">Login to continue</p>
         </div>
+
+        {error && (
+          <div className="mb-5 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50/95 p-3">
+            <FiAlertCircle className="mt-0.5 flex-shrink-0 text-rose-600" />
+            <p className="text-sm text-rose-700">{error}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Username</label>
+            <div className="relative group">
+              <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-600" />
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter username"
+                className="w-full rounded-xl border border-slate-300/90 bg-white/90 py-2.5 pl-10 pr-3 text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Password</label>
+            <div className="relative group">
+              <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-600" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full rounded-xl border border-slate-300/90 bg-white/90 py-2.5 pl-10 pr-3 text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="group inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white py-2.5 font-semibold transition hover:from-blue-700 hover:to-cyan-600 disabled:cursor-not-allowed disabled:opacity-60 shadow-lg shadow-blue-300/50"
+          >
+            {loading ? 'Logging in...' : 'Login'}
+            {!loading && <FiArrowRight className="transition-transform group-hover:translate-x-0.5" />}
+          </button>
+        </form>
+
+        <div className="mt-5 rounded-xl border border-slate-200 bg-white/70 p-3">
+          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Demo Credentials</p>
+          <p className="mt-2 text-xs text-slate-600">Admin: <span className="font-mono text-slate-800">admin</span> / <span className="font-mono text-slate-800">admin123</span></p>
+          <p className="mt-1 text-xs text-slate-600">Student: <span className="font-mono text-slate-800">student</span> / <span className="font-mono text-slate-800">student123</span></p>
+        </div>
+
+        <p className="mt-5 text-center text-xs text-slate-500">
+          Welcome to Library Management System
+        </p>
       </div>
     </div>
   );

@@ -21,6 +21,9 @@ api.interceptors.request.use((config) => {
 export const loginAdmin = (username, password) =>
   api.post('/auth/login', { username, password });
 
+export const changePassword = (passwordData) =>
+  api.post('/auth/change-password', passwordData);
+
 // Book APIs
 export const getBooks = (page = 1, limit = 10, search = '', faculty = '') =>
   api.get('/books', { params: { page, limit, search, faculty } });

@@ -67,4 +67,58 @@ const login = async (req, res) => {
   }
 };
 
-module.exports = { login };
+const changePassword = async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body;
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    if (req.user.role !== 'student') {
+      return res.status(403).json({ message: 'Only students can change password here' });
+    }
+
+    if (!current_password || !new_password) {
+      return res.status(400).json({ message: 'Current and new password are required' });
+    }
+
+    if (new_password.length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters' });
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+      const [users] = await connection.query('SELECT id, password FROM users WHERE id = ? LIMIT 1', [req.user.id]);
+
+      if (users.length === 0) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const user = users[0];
+      const isCurrentPasswordValid = await bcrypt.compare(current_password, user.password || '');
+
+      if (!isCurrentPasswordValid) {
+        return res.status(400).json({ message: 'Current password is incorrect' });
+      }
+
+      const isSamePassword = await bcrypt.compare(new_password, user.password || '');
+      if (isSamePassword) {
+        return res.status(400).json({ message: 'New password must be different from current password' });
+      }
+
+      const hashedNewPassword = await bcrypt.hash(new_password, 10);
+      await connection.query('UPDATE users SET password = ? WHERE id = ?', [hashedNewPassword, req.user.id]);
+
+      return res.json({ message: 'Password changed successfully' });
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+module.exports = { login, changePassword };

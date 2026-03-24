@@ -51,10 +51,10 @@ const Issue = () => {
         getUsers(1, 1000), // Get all users for dropdown
       ]);
 
-      setIssuedBooks(issuedRes.data.issuedBooks);
-      setPagination(issuedRes.data.pagination);
-      setBooks(booksRes.data.books);
-      setUsers(usersRes.data.users);
+      setIssuedBooks(Array.isArray(issuedRes?.data?.issuedBooks) ? issuedRes.data.issuedBooks : []);
+      setPagination(issuedRes?.data?.pagination || { pages: 1 });
+      setBooks(Array.isArray(booksRes?.data?.books) ? booksRes.data.books : []);
+      setUsers(Array.isArray(usersRes?.data?.users) ? usersRes.data.users : []);
     } catch (err) {
       setError('Failed to sync circulation data');
     } finally {
@@ -65,6 +65,18 @@ const Issue = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (showIssueForm) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showIssueForm]);
 
   // Auto-clear messages
   useEffect(() => {
@@ -129,7 +141,7 @@ const Issue = () => {
   });
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 pb-10">
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
@@ -218,7 +230,7 @@ const Issue = () => {
             <p className="font-medium text-slate-500">No circulation records found for this filter.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-auto max-h-[56vh]">
             <table className="w-full">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100">
@@ -320,18 +332,19 @@ const Issue = () => {
       {/* Issuance Form (Modern Modal) */}
       <AnimatePresence>
         {showIssueForm && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xl">
+          <div className="fixed inset-0 z-[100] overflow-y-auto p-4 sm:p-6 bg-slate-900/65 backdrop-blur-xl">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200"
+              className="bg-white rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 mx-auto my-4 sm:my-8 max-h-[92vh] flex flex-col"
             >
-              <div className="p-10 flex flex-col items-center text-center">
+              <div className="sticky top-0 z-10 px-6 sm:px-10 pt-8 pb-5 bg-gradient-to-b from-white via-white to-white/95 border-b border-slate-100 flex flex-col items-center text-center">
                 <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mb-6">
                   <ArrowRightLeft className="w-8 h-8 text-rose-600" />
                 </div>
                 <h2 className="text-3xl font-black text-slate-900 tracking-tight">Issue a Book</h2>
                 <p className="text-slate-500 font-medium mt-2">Map catalog items to library members.</p>
-                
-                <form onSubmit={handleIssueBook} className="w-full mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+              </div>
+
+              <form onSubmit={handleIssueBook} className="w-full px-6 sm:px-10 py-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
                   <div className="space-y-2 md:col-span-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Select Catalog Item</label>
                     <select
@@ -435,12 +448,11 @@ const Issue = () => {
                     />
                   </div>
 
-                  <div className="md:col-span-2 pt-4 flex gap-4">
+                  <div className="md:col-span-2 sticky bottom-0 bg-gradient-to-t from-white via-white to-white/95 pt-4 pb-1 flex gap-4 border-t border-slate-100">
                     <button type="button" onClick={() => setShowIssueForm(false)} className="flex-1 px-8 py-4 rounded-2xl font-black uppercase tracking-widest bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">Discard</button>
                     <button type="submit" className="flex-[2] px-8 py-4 rounded-2xl font-black uppercase tracking-widest bg-rose-600 text-white hover:bg-rose-700 shadow-xl shadow-rose-200 transition-all active:scale-95">Complete Issuance</button>
                   </div>
-                </form>
-              </div>
+              </form>
             </motion.div>
           </div>
         )}

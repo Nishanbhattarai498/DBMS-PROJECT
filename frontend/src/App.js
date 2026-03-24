@@ -31,11 +31,11 @@ function AppContent() {
         <Route
           path="/*"
           element={
-            <div className="flex h-screen overflow-hidden bg-slate-50">
+            <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/40 to-amber-50/30">
               <Sidebar isOpen={sidebarOpen} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-              <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
+              <div className="flex-1 flex flex-col h-screen overflow-hidden relative min-w-0">
                 <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
-                <main className="flex-1 overflow-y-auto p-6 md:p-8">
+                <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8 lg:p-10">
                   <Routes>
                     {role === 'student' ? (
                       <>

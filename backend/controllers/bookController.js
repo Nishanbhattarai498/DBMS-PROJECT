@@ -101,7 +101,7 @@ const addBook = async (req, res) => {
 
     const connection = await pool.getConnection();
     try {
-      await connection.beginTransaction();
+      await connection.beginTransaction(); ///// transaction begins 
 
       const [result] = await connection.query(
         'INSERT INTO books (title, author, faculty, isbn, total_quantity, available_quantity) VALUES (?, ?, ?, ?, ?, ?)',

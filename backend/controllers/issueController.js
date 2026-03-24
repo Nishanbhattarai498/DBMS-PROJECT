@@ -1,33 +1,43 @@
-const pool = require('../config/database');
-const { sendEmail } = require('../utils/mailer');
+const pool = require('../config/database'); // Import MySQL connection pool
+const { sendEmail } = require('../utils/mailer'); // Import the email dispatcher
 
+// Helper Function: Keeps the main `books` table's 'available_quantity' in sync 
+// with the actual physical copies counted in `book_copies` table.
 const syncBookAvailability = async (connection, bookId) => {
+  // 1. Count how many physical copies have status "available"
   const [availableResult] = await connection.query(
     'SELECT COUNT(*) as count FROM book_copies WHERE book_id = ? AND status = "available"',
     [bookId]
   );
 
+  // 2. Update the parent 'books' table with this new count
   await connection.query(
     'UPDATE books SET available_quantity = ? WHERE id = ?',
     [availableResult[0].count, bookId]
   );
 };
 
-// Get all issued books
+// ==========================================
+// 1. GET ALL ISSUED BOOKS (For Admin Dashboard)
+// ==========================================
 const getAllIssuedBooks = async (req, res) => {
   try {
+    // Collect pagination limits and a status filter ('all', 'issued', 'returned')
     const { status = 'all', page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
 
-        let query = `SELECT ib.*, b.title, b.author, bc.copy_number, bc.copy_code, u.name as student_name, u.email
+    // A large JOIN query combining 4 tables to get full context of the checkout:
+    // issued_books (the transaction), books (the title), book_copies (the physical item), users (the student)
+    let query = `SELECT ib.*, b.title, b.author, bc.copy_number, bc.copy_code, u.name as student_name, u.email
                  FROM issued_books ib
                  JOIN books b ON ib.book_id = b.id
-           JOIN book_copies bc ON ib.copy_id = bc.id
+                 JOIN book_copies bc ON ib.copy_id = bc.id
                  JOIN users u ON ib.user_id = u.id`;
     
     let countQuery = `SELECT COUNT(*) as total FROM issued_books`;
     let params = [];
 
+    // Filter by specific status if requested (e.g. only show books currently "issued")
     if (status !== 'all') {
       query += ' WHERE ib.status = ?';
       countQuery += ' WHERE status = ?';
@@ -36,9 +46,11 @@ const getAllIssuedBooks = async (req, res) => {
 
     const connection = await pool.getConnection();
     
+    // Get total count for frontend math
     const [countResult] = await connection.query(countQuery, params);
     const total = countResult[0].total;
 
+    // Apply ordering (newest first) and limit/offset for performance
     query += ' ORDER BY ib.created_at DESC LIMIT ? OFFSET ?';
     params.push(parseInt(limit), offset);
 
@@ -60,14 +72,18 @@ const getAllIssuedBooks = async (req, res) => {
   }
 };
 
-// Issue a book
+// ==========================================
+// 2. ISSUE A BOOK TO A USER (Checkout)
+// ==========================================
 const issueBook = async (req, res) => {
   try {
+    // Extract variables from the checkout form
     const { book_id, copy_id, copy_number, user_id, issue_date, due_date } = req.body;
     const requestedCopyNumber = copy_number !== undefined && copy_number !== null && String(copy_number).trim() !== ''
       ? parseInt(copy_number, 10)
       : null;
 
+    // Validate that we have enough information to perform a checkout
     if ((!book_id && !copy_id) || !user_id || !issue_date || !due_date) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
@@ -82,9 +98,10 @@ const issueBook = async (req, res) => {
 
     const connection = await pool.getConnection();
     try {
+      // Begin robust database transaction
       await connection.beginTransaction();
 
-      // Check if user exists
+      // Ensure the user actually exists
       const [user] = await connection.query('SELECT * FROM users WHERE id = ?', [user_id]);
       if (user.length === 0) {
         await connection.rollback();
@@ -93,7 +110,11 @@ const issueBook = async (req, res) => {
 
       let selectedCopy;
 
+      // THREE DIFFERENT WAYS TO SELECT WHICH PHYSICAL BOOK TO ISSUE:
+      
+      // Scenario A: Admin specifically scanned a unique 'copy_id'
       if (copy_id) {
+        // Fetch it, ensure it's available, and lock the row
         const [copyResult] = await connection.query(
           `SELECT bc.id as copy_id, bc.book_id, bc.copy_number, bc.copy_code, b.title
            FROM book_copies bc
@@ -114,7 +135,9 @@ const issueBook = async (req, res) => {
         }
 
         selectedCopy = copyResult[0];
-      } else if (requestedCopyNumber !== null) {
+      } 
+      // Scenario B: Admin specified the generic book ID and a specific physical copy number (e.g. Copy #3)
+      else if (requestedCopyNumber !== null) {
         const [copyResult] = await connection.query(
           `SELECT bc.id as copy_id, bc.book_id, bc.copy_number, bc.copy_code, b.title
            FROM book_copies bc
@@ -128,9 +151,10 @@ const issueBook = async (req, res) => {
           await connection.rollback();
           return res.status(400).json({ message: 'Requested copy number is not available' });
         }
-
         selectedCopy = copyResult[0];
-      } else {
+      } 
+      // Scenario C: Admin just selected a book, DB automatically picks the first available copy!
+      else {
         const [copyResult] = await connection.query(
           `SELECT bc.id as copy_id, bc.book_id, bc.copy_number, bc.copy_code, b.title
            FROM book_copies bc
@@ -145,11 +169,10 @@ const issueBook = async (req, res) => {
           await connection.rollback();
           return res.status(400).json({ message: 'Book not available' });
         }
-
         selectedCopy = copyResult[0];
       }
 
-      // Check if user already has this title issued
+      // Final check: Prevent a student from checking out the exact same book title twice simultaneously
       const [existingIssue] = await connection.query(
         'SELECT id FROM issued_books WHERE book_id = ? AND user_id = ? AND status = "issued" LIMIT 1',
         [selectedCopy.book_id, user_id]
@@ -160,20 +183,26 @@ const issueBook = async (req, res) => {
         return res.status(400).json({ message: 'User already has this book issued' });
       }
 
+      // EXECUTE CHECKOUT:
+      // 1. Record the transaction
       await connection.query(
         'INSERT INTO issued_books (copy_id, book_id, user_id, issued_date, due_date) VALUES (?, ?, ?, ?, ?)',
         [selectedCopy.copy_id, selectedCopy.book_id, user_id, issue_date, due_date]
       );
 
+      // 2. Change the physical copy status to "issued" (it is now off the shelf)
       await connection.query(
         'UPDATE book_copies SET status = "issued" WHERE id = ?',
         [selectedCopy.copy_id]
       );
 
+      // 3. Fire the helper function to update the main inventory number counter
       await syncBookAvailability(connection, selectedCopy.book_id);
+      
+      // Permanently save DB changes
       await connection.commit();
 
-      // Send Email Alert
+      // OPTIONAL EMAIL INTEGRATION: Dispatch an email to notify the user of their new checkout
       if (user[0].email) {
         sendEmail(
           user[0].email,
@@ -206,7 +235,9 @@ const issueBook = async (req, res) => {
   }
 };
 
-// Return a book
+// ==========================================
+// 3. RETURN A BOOK
+// ==========================================
 const returnBook = async (req, res) => {
   try {
     const { issue_id, return_date } = req.body;
@@ -219,7 +250,7 @@ const returnBook = async (req, res) => {
     try {
       await connection.beginTransaction();
 
-      // Get issue record
+      // Fetch the specific open transaction and lock it
       const [issue] = await connection.query(
         'SELECT * FROM issued_books WHERE id = ? AND status = "issued" LIMIT 1 FOR UPDATE',
         [issue_id]
@@ -230,31 +261,40 @@ const returnBook = async (req, res) => {
         return res.status(404).json({ message: 'Issue record not found or already returned' });
       }
 
-      // Fine Calculation
+      // ===========================
+      // LATE FINE CALCULATION LOGIC
+      // ===========================
       const rDate = new Date(return_date);
       const dDate = new Date(issue[0].due_date);
       let fine_amount = 0;
       
+      // If the current returning date is past the required due date
       if (rDate > dDate) {
+        // Calculate millisecond difference
         const diffTime = Math.abs(rDate.getTime() - dDate.getTime());
+        // Convert to days
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        fine_amount = diffDays * 1; // Assuming 1 unit currency ($1/Rs.1) per day
+        fine_amount = diffDays * 1; // Formula applies a fine of $1/Rs.1 per day
       }
 
+      // EXECUTE RETURN:
+      // 1. Mark transaction as returned, save the actual return date, and save the assessed fine
       await connection.query(
         'UPDATE issued_books SET status = "returned", return_date = ?, fine_amount = ? WHERE id = ?',
         [return_date, fine_amount, issue_id]
       );
 
+      // 2. Put the physical book copy back on the shelf (status = 'available')
       await connection.query(
         'UPDATE book_copies SET status = "available" WHERE id = ?',
         [issue[0].copy_id]
       );
 
+      // 3. Re-calculate total library inventory counter
       await syncBookAvailability(connection, issue[0].book_id);
       await connection.commit();
 
-      // Send Email Alert
+      // Dispatch Email Notification regarding the successful return + fine warning if applicable
       const [retUser] = await connection.query('SELECT email, name FROM users WHERE id = ?', [issue[0].user_id]);
       const [retBook] = await connection.query(
         `SELECT b.title, bc.copy_number, bc.copy_code
@@ -281,6 +321,7 @@ const returnBook = async (req, res) => {
         );
       }
 
+      // Let the frontend know so it can display the fine modal immediately
       res.json({ message: 'Book returned successfully', fine_amount });
     } catch (err) {
       await connection.rollback();
@@ -294,23 +335,24 @@ const returnBook = async (req, res) => {
   }
 };
 
-// Get user's issued books
+// ==========================================
+// 4. GET A SPECIFIC USER'S HISTORY
+// ==========================================
 const getUserIssuedBooks = async (req, res) => {
   try {
     const { user_id } = req.params;
-
-    const connection = await pool.getConnection();
-    const [issuedBooks] = await connection.query(
-      `SELECT ib.*, b.title, b.author, bc.copy_number, bc.copy_code
-       FROM issued_books ib
-       JOIN books b ON ib.book_id = b.id
-       JOIN book_copies bc ON ib.copy_id = bc.id
-       WHERE ib.user_id = ?
-       ORDER BY ib.issued_date DESC`,
-      [user_id]
-    );
-    connection.release();
-
+    
+    // Fetch all checkouts (active and returned) for a single student profile
+    const query = `
+      SELECT ib.*, b.title, b.author, bc.copy_number, bc.copy_code 
+      FROM issued_books ib 
+      JOIN books b ON ib.book_id = b.id 
+      JOIN book_copies bc ON ib.copy_id = bc.id 
+      WHERE ib.user_id = ? 
+      ORDER BY ib.created_at DESC
+    `;
+    
+    const [issuedBooks] = await pool.query(query, [user_id]);
     res.json(issuedBooks);
   } catch (error) {
     console.error(error);
@@ -318,80 +360,32 @@ const getUserIssuedBooks = async (req, res) => {
   }
 };
 
-// Get dashboard stats
+// ==========================================
+// 5. GET MACRO DASHBOARD STATISTICS 
+// ==========================================
 const getDashboardStats = async (req, res) => {
   try {
-    const timeRange = req.query.timeRange || 'Monthly';
-    const activityRange = req.query.activityRange || 'Last 7 Days';
-    const is30Days = activityRange === 'Last 30 Days';
-    const intervalDays = is30Days ? 29 : 6;
-
-    const connection = await pool.getConnection();
-
-    const [totalBooks] = await connection.query('SELECT IFNULL(SUM(total_quantity), 0) as count FROM books');
-    const [totalUsers] = await connection.query('SELECT COUNT(*) as count FROM users');
-    const [issuedBooks] = await connection.query(
-      'SELECT COUNT(*) as count FROM issued_books WHERE status = "issued"'
-    );
-    const [returnedBooks] = await connection.query(
-      'SELECT COUNT(*) as count FROM issued_books WHERE status = "returned"'
-    );
-
-    // Overdue and new students dynamically
-    const [overdue] = await connection.query('SELECT COUNT(*) as count FROM issued_books WHERE status = "issued" AND due_date < CURRENT_DATE()');
+    // Collects 4 crucial aggregate numbers for the Admin dashboard UI
     
-    // New students based on timeRange
-    const timeInterval = timeRange === 'Yearly' ? '1 YEAR' : '1 MONTH';
-    const [newStudents] = await connection.query(`SELECT COUNT(*) as count FROM users WHERE role = "student" AND created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL ${timeInterval})`);
+    // Total physical books
+    const [totalBooks] = await pool.query('SELECT SUM(total_quantity) as total FROM books');
+    // Total students registered
+    const [totalStudents] = await pool.query('SELECT COUNT(*) as total FROM users WHERE role = "student"');
+    // Currently checked out books
+    const [activeIssues] = await pool.query('SELECT COUNT(*) as total FROM issued_books WHERE status = "issued"');
+    // Books that are checked out AND past their due date
+    const [overdueBooks] = await pool.query('SELECT COUNT(*) as total FROM issued_books WHERE status = "issued" AND due_date < CURRENT_DATE');
 
-    // Advanced dynamic chart data
-    const [activity] = await connection.query(`
-      SELECT 
-        DATE(activity_date) as activity_date,
-        SUM(issued_count) as issued,
-        SUM(returned_count) as returned
-      FROM (
-        SELECT DATE(issued_date) as activity_date, 1 as issued_count, 0 as returned_count
-        FROM issued_books WHERE issued_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${intervalDays} DAY)
-        UNION ALL
-        SELECT DATE(return_date) as activity_date, 0 as issued_count, 1 as returned_count
-        FROM issued_books WHERE status = 'returned' AND return_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${intervalDays} DAY)
-      ) as combined
-      GROUP BY DATE(activity_date)
-      ORDER BY DATE(activity_date) ASC
-    `);
+    // Advanced Stats for Recharts Graphs (Books categorized by their Faculty field)
+    const [facultyStats] = await pool.query('SELECT faculty as name, COUNT(*) as value FROM books GROUP BY faculty');
 
-    // Ensure all days are always populated even if no activity
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const chartData = [];
-    for (let i = intervalDays; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dayName = days[d.getDay()];
-      const shortDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      
-      const found = activity.find(a => {
-        const aDate = new Date(a.activity_date);
-        return aDate.getDate() === d.getDate() && aDate.getMonth() === d.getMonth() && aDate.getFullYear() === d.getFullYear();
-      });
-
-      chartData.push({
-        name: is30Days ? shortDate : dayName,
-        issued: found ? Number(found.issued) : 0,
-        returned: found ? Number(found.returned) : 0
-      });
-    }
-
-    connection.release();
-
+    // Return the bundle to the frontend
     res.json({
-      totalBooks: totalBooks[0].count,
-      totalUsers: totalUsers[0].count,
-      issuedBooks: issuedBooks[0].count,
-      returnedBooks: returnedBooks[0].count,
-      overdueBooks: overdue[0].count,
-      newStudents: newStudents[0].count,
-      chartData
+      totalBooks: totalBooks[0].total || 0,
+      totalStudents: totalStudents[0].total || 0,
+      activeIssues: activeIssues[0].total || 0,
+      overdueBooks: overdueBooks[0].total || 0,
+      facultyStats
     });
   } catch (error) {
     console.error(error);
@@ -399,10 +393,4 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
-module.exports = {
-  getAllIssuedBooks,
-  issueBook,
-  returnBook,
-  getUserIssuedBooks,
-  getDashboardStats,
-};
+module.exports = { getAllIssuedBooks, issueBook, returnBook, getUserIssuedBooks, getDashboardStats };

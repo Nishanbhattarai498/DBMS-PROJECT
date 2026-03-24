@@ -1,329 +1,86 @@
-const pool = require('../config/database');
+const fs = require('fs');
+const path = require('path');
+const mysql = require('mysql2/promise');
 
-const makeCopyCode = (isbn, bookId, seq) => {
-  const cleanIsbn = String(isbn || 'BOOK').replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'BOOK';
-  return `${cleanIsbn}-${bookId}-${String(seq).padStart(4, '0')}`;
-};
-
-const tableExists = async (connection, tableName) => {
-  const [rows] = await connection.query(
-    `SELECT COUNT(*) as count
-     FROM information_schema.tables
-     WHERE table_schema = DATABASE() AND table_name = ?`,
-    [tableName]
-  );
-  return rows[0].count > 0;
-};
-
-const columnExists = async (connection, tableName, columnName) => {
-  const [rows] = await connection.query(
-    `SELECT COUNT(*) as count
-     FROM information_schema.columns
-     WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
-    [tableName, columnName]
-  );
-  return rows[0].count > 0;
-};
-
-const indexExists = async (connection, tableName, indexName) => {
-  const [rows] = await connection.query(
-    `SELECT COUNT(*) as count
-     FROM information_schema.statistics
-     WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
-    [tableName, indexName]
-  );
-  return rows[0].count > 0;
-};
-
-const ensureBaseTables = async (connection) => {
-  await connection.query(`
-    CREATE TABLE IF NOT EXISTS admin (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      username VARCHAR(50) NOT NULL UNIQUE,
-      email VARCHAR(100) NOT NULL UNIQUE,
-      password VARCHAR(255) NOT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-  `);
-
-  await connection.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      name VARCHAR(100) NOT NULL,
-      email VARCHAR(100) NOT NULL UNIQUE,
-      phone VARCHAR(15) DEFAULT NULL,
-      address VARCHAR(255) DEFAULT NULL,
-      username VARCHAR(50) NOT NULL UNIQUE,
-      password VARCHAR(255) NOT NULL,
-      role ENUM('admin', 'student') NOT NULL DEFAULT 'student',
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_user_email (email)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-  `);
-
-  await connection.query(`
-    CREATE TABLE IF NOT EXISTS books (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      title VARCHAR(200) NOT NULL,
-      author VARCHAR(100) NOT NULL,
-      faculty VARCHAR(50) DEFAULT NULL,
-      isbn VARCHAR(20) NOT NULL UNIQUE,
-      total_quantity INT NOT NULL DEFAULT 1,
-      available_quantity INT NOT NULL DEFAULT 1,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_book_isbn (isbn)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-  `);
-
-  await connection.query(`
-    CREATE TABLE IF NOT EXISTS student_profiles (
-      user_id INT PRIMARY KEY,
-      student_id VARCHAR(50) UNIQUE,
-      semester INT,
-      department VARCHAR(100),
-      batch_year INT,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      CONSTRAINT fk_student_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-  `);
-
-  const hasBooksTotal = await columnExists(connection, 'books', 'total_quantity');
-  if (!hasBooksTotal) {
-    await connection.query('ALTER TABLE books ADD COLUMN total_quantity INT NOT NULL DEFAULT 1');
-  }
-
-  const hasBooksAvailable = await columnExists(connection, 'books', 'available_quantity');
-  if (!hasBooksAvailable) {
-    await connection.query('ALTER TABLE books ADD COLUMN available_quantity INT NOT NULL DEFAULT 1');
-  }
-};
-
-const ensureCopyAndIssueTables = async (connection) => {
-  await connection.query(`
-    CREATE TABLE IF NOT EXISTS book_copies (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      book_id INT NOT NULL,
-      copy_number INT NOT NULL,
-      copy_code VARCHAR(64) NOT NULL UNIQUE,
-      status ENUM('available', 'issued', 'lost', 'damaged') NOT NULL DEFAULT 'available',
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_copy_book_id (book_id),
-      INDEX idx_copy_number (copy_number),
-      INDEX idx_copy_status (status),
-      UNIQUE KEY uq_copy_book_number (book_id, copy_number),
-      CONSTRAINT fk_copy_book FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE ON UPDATE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-  `);
-
-  const hasCopyNumber = await columnExists(connection, 'book_copies', 'copy_number');
-  if (!hasCopyNumber) {
-    await connection.query('ALTER TABLE book_copies ADD COLUMN copy_number INT NULL AFTER book_id');
-  }
-
-  const issuedExists = await tableExists(connection, 'issued_books');
-  if (!issuedExists) {
-    await connection.query(`
-      CREATE TABLE issued_books (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        copy_id INT NULL,
-        book_id INT NOT NULL,
-        user_id INT NOT NULL,
-        issued_date DATE NOT NULL,
-        due_date DATE NOT NULL,
-        return_date DATE DEFAULT NULL,
-        status ENUM('issued', 'returned') NOT NULL DEFAULT 'issued',
-        fine_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_issued_copy_id (copy_id),
-        INDEX idx_issued_book_id (book_id),
-        INDEX idx_issued_user_id (user_id),
-        INDEX idx_issued_status (status),
-        CONSTRAINT fk_issued_books_copy FOREIGN KEY (copy_id) REFERENCES book_copies(id) ON DELETE RESTRICT ON UPDATE CASCADE,
-        CONSTRAINT fk_issued_books_book FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE RESTRICT ON UPDATE CASCADE,
-        CONSTRAINT fk_issued_books_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-    `);
-  } else {
-    const hasCopyId = await columnExists(connection, 'issued_books', 'copy_id');
-    if (!hasCopyId) {
-      await connection.query('ALTER TABLE issued_books ADD COLUMN copy_id INT NULL AFTER id');
-      await connection.query('CREATE INDEX idx_issued_copy_id ON issued_books(copy_id)');
-      await connection.query(
-        'ALTER TABLE issued_books ADD CONSTRAINT fk_issued_books_copy FOREIGN KEY (copy_id) REFERENCES book_copies(id) ON DELETE RESTRICT ON UPDATE CASCADE'
-      );
-    }
-
-    const hasIssuedDate = await columnExists(connection, 'issued_books', 'issued_date');
-    if (!hasIssuedDate) {
-      await connection.query('ALTER TABLE issued_books ADD COLUMN issued_date DATE NULL');
-      const hasLegacyIssueDate = await columnExists(connection, 'issued_books', 'issue_date');
-      if (hasLegacyIssueDate) {
-        await connection.query('UPDATE issued_books SET issued_date = issue_date WHERE issued_date IS NULL');
-      }
-      await connection.query('UPDATE issued_books SET issued_date = CURRENT_DATE() WHERE issued_date IS NULL');
-      await connection.query('ALTER TABLE issued_books MODIFY COLUMN issued_date DATE NOT NULL');
-    }
-
-    const hasDueDate = await columnExists(connection, 'issued_books', 'due_date');
-    if (!hasDueDate) {
-      await connection.query('ALTER TABLE issued_books ADD COLUMN due_date DATE NULL');
-      await connection.query('UPDATE issued_books SET due_date = DATE_ADD(issued_date, INTERVAL 14 DAY) WHERE due_date IS NULL');
-      await connection.query('ALTER TABLE issued_books MODIFY COLUMN due_date DATE NOT NULL');
-    }
-
-    const hasFineAmount = await columnExists(connection, 'issued_books', 'fine_amount');
-    if (!hasFineAmount) {
-      await connection.query('ALTER TABLE issued_books ADD COLUMN fine_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00');
-    }
-
-    const hasStatus = await columnExists(connection, 'issued_books', 'status');
-    if (!hasStatus) {
-      await connection.query('ALTER TABLE issued_books ADD COLUMN status ENUM("issued", "returned") NOT NULL DEFAULT "issued"');
-    }
-  }
-};
-
-const backfillBookCopies = async (connection) => {
-  const [books] = await connection.query('SELECT id, isbn, total_quantity FROM books ORDER BY id ASC');
-
-  for (const book of books) {
-    const totalQuantity = Math.max(Number(book.total_quantity) || 1, 1);
-
-    const [existingCopies] = await connection.query(
-      'SELECT id FROM book_copies WHERE book_id = ? ORDER BY id ASC',
-      [book.id]
-    );
-
-    for (let i = 0; i < existingCopies.length; i += 1) {
-      const copyNumber = i + 1;
-      await connection.query(
-        'UPDATE book_copies SET copy_number = ?, copy_code = COALESCE(NULLIF(copy_code, ""), ?) WHERE id = ?',
-        [copyNumber, makeCopyCode(book.isbn, book.id, copyNumber), existingCopies[i].id]
-      );
-    }
-
-    const [copyCountRows] = await connection.query(
-      'SELECT COUNT(*) as count FROM book_copies WHERE book_id = ?',
-      [book.id]
-    );
-
-    const existingCount = copyCountRows[0].count;
-    if (existingCount < totalQuantity) {
-      const rowsToAdd = totalQuantity - existingCount;
-      const insertRows = Array.from({ length: rowsToAdd }, (_, index) => [
-        book.id,
-        existingCount + index + 1,
-        makeCopyCode(book.isbn, book.id, existingCount + index + 1),
-      ]);
-
-      const placeholders = insertRows.map(() => '(?, ?, ?)').join(', ');
-      const values = insertRows.flat();
-
-      await connection.query(
-        `INSERT INTO book_copies (book_id, copy_number, copy_code) VALUES ${placeholders}`,
-        values
-      );
-    }
-  }
-
-  const hasCopyNumberIndex = await indexExists(connection, 'book_copies', 'idx_copy_number');
-  if (!hasCopyNumberIndex) {
-    await connection.query('CREATE INDEX idx_copy_number ON book_copies(copy_number)');
-  }
-
-  const hasUniqueCopyBookNumber = await indexExists(connection, 'book_copies', 'uq_copy_book_number');
-  if (!hasUniqueCopyBookNumber) {
-    await connection.query('CREATE UNIQUE INDEX uq_copy_book_number ON book_copies(book_id, copy_number)');
-  }
-
-  const hasCopyNumberColumn = await columnExists(connection, 'book_copies', 'copy_number');
-  if (hasCopyNumberColumn) {
-    await connection.query('ALTER TABLE book_copies MODIFY COLUMN copy_number INT NOT NULL');
-  }
-};
-
-const assignCopiesToLegacyIssues = async (connection) => {
-  const hasCopyId = await columnExists(connection, 'issued_books', 'copy_id');
-  if (!hasCopyId) {
-    return;
-  }
-
-  const [legacyIssues] = await connection.query(
-    `SELECT id, book_id
-     FROM issued_books
-     WHERE status = 'issued' AND (copy_id IS NULL OR copy_id = 0)
-     ORDER BY id ASC`
-  );
-
-  for (const issue of legacyIssues) {
-    const [availableCopyRows] = await connection.query(
-      `SELECT id
-       FROM book_copies
-       WHERE book_id = ? AND status = 'available'
-       ORDER BY id ASC
-       LIMIT 1 FOR UPDATE`,
-      [issue.book_id]
-    );
-
-    if (availableCopyRows.length === 0) {
-      continue;
-    }
-
-    const copyId = availableCopyRows[0].id;
-    await connection.query('UPDATE issued_books SET copy_id = ? WHERE id = ?', [copyId, issue.id]);
-    await connection.query('UPDATE book_copies SET status = "issued" WHERE id = ?', [copyId]);
-  }
-
-  await connection.query(
-    `UPDATE book_copies bc
-     JOIN issued_books ib ON ib.copy_id = bc.id
-     SET bc.status = 'issued'
-     WHERE ib.status = 'issued'`
-  );
-};
-
-const syncBookAvailability = async (connection) => {
-  await connection.query(
-    `UPDATE books b
-     LEFT JOIN (
-       SELECT book_id, COUNT(*) as available_count
-       FROM book_copies
-       WHERE status = 'available'
-       GROUP BY book_id
-     ) c ON c.book_id = b.id
-     SET b.available_quantity = COALESCE(c.available_count, 0),
-         b.total_quantity = GREATEST(b.total_quantity, COALESCE((SELECT COUNT(*) FROM book_copies x WHERE x.book_id = b.id), 0))`
-  );
-};
+// ==========================================
+// AUTOMATED DATABASE BOOTSTRAPPER
+// ==========================================
+// This script runs automatically before the Node server starts listening for traffic.
+// It verifies the database exists and automatically creates the tables based on 'database.sql'.
 
 const bootstrapSchema = async () => {
-  const connection = await pool.getConnection();
-
+  let connection;
   try {
-    await connection.beginTransaction();
+    // Stage 1: Connect to MySQL WITHOUT a specific database first!
+    // This allows us to create the "library_management" database if the user hasn't made it manually yet.
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST || 'localhost',
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || 'password',
+      multipleStatements: true, // Crucial: Allows us to execute dozens of SQL commands in a single payload
+    });
 
-    await ensureBaseTables(connection);
-    await ensureCopyAndIssueTables(connection);
-    await backfillBookCopies(connection);
-    await assignCopiesToLegacyIssues(connection);
-    await syncBookAvailability(connection);
+    // Extract desired DB name
+    const dbName = process.env.DB_NAME || 'library_management';
 
-    await connection.commit();
-    console.log('Database schema bootstrap completed.');
+    // Verify system admin password is changed from defaults 
+    if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD) {
+      console.warn('⚠️ WARNING: ADMIN_USERNAME or ADMIN_PASSWORD not found in environment variables. Default admin may not be created.');
+    }
+
+    // Attempt to construct the Database container securely
+    console.log(`Checking database '${dbName}' status...`);
+    await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
+    
+    // Switch the active connection's scope to that database
+    await connection.query(`USE \`${dbName}\`;`);
+
+    // Load the massive SQL script containing all TABLE mapping from the root backend/ folder
+    const schemaPath = path.join(__dirname, '../database.sql');
+    const schemaSQL = fs.readFileSync(schemaPath, 'utf8');
+
+    // Execute the raw script building all tables natively into MySQL
+    console.log('Running schema update...');
+    await connection.query(schemaSQL);
+
+    // ==========================================
+    // AUTO-GENERATE INITIAL ADMINISTRATOR
+    // ==========================================
+    // Once tables are confirmed to exist, inject the default admin so someone can actually log in on first-launch.
+    const bcrypt = require('bcryptjs');
+    const adminUser = process.env.ADMIN_USERNAME || 'admin';
+    const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@library.com';
+
+    // Verify if an admin already exists to prevent duplicate insertion
+    const [existingAdmins] = await connection.query('SELECT username FROM admin WHERE username = ?', [adminUser]);
+
+    if (existingAdmins.length === 0) {
+      console.log(`Creating default admin user: '${adminUser}'`);
+      
+      // Hash password
+      const hashedPass = await bcrypt.hash(adminPass, 10);
+      
+      // Insert
+      await connection.query(
+        'INSERT INTO admin (username, email, password) VALUES (?, ?, ?)',
+        [adminUser, adminEmail, hashedPass]
+      );
+      console.log('✅ Default admin installed successfully');
+    } else {
+      console.log('ℹ️ Admin user already exists, skipping creation.');
+    }
+
+    console.log('✅ Database bootstrap completed successfully!');
   } catch (error) {
-    await connection.rollback();
-    console.error('Database schema bootstrap failed:', error.message);
-    throw error;
+    console.error('❌ Database bootstrap totally failed:', error);
+    throw error; // Bubble error back up to server.js so it can gracefully crash
   } finally {
-    connection.release();
+    if (connection) {
+      // Must sever raw connection to clear memory
+      await connection.end();
+    }
   }
 };
 
-module.exports = {
-  bootstrapSchema,
-};
+module.exports = { bootstrapSchema };

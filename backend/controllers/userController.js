@@ -1,45 +1,44 @@
-const pool = require('../config/database');
-const bcrypt = require('bcryptjs');
+const pool = require('../config/database'); // Import DB connection
+const bcrypt = require('bcryptjs'); // For potentially hashing passwords during user creation
 
-// Get all users
-const getAllUsers = async (req, res) => {
+// ==========================================
+// 1. GET ALL STUDENTS (With pagination and search)
+// ==========================================
+const getAllStudents = async (req, res) => {
   try {
-    const { search, department, batch_year, page = 1, limit = 10 } = req.query;
+    const { search, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
 
-    let baseQuery = `
+    // Join the main `users` table with the `student_profiles` detail table
+    let query = `
+      SELECT u.id, u.name, u.email, u.phone, u.address, u.username, u.role, u.created_at,
+             sp.student_id, sp.semester, sp.department, sp.batch_year
       FROM users u
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
-      WHERE 1=1
+      WHERE u.role = 'student'
     `;
-    
+    let countQuery = `SELECT COUNT(*) as total FROM users WHERE role = 'student'`;
     let params = [];
 
+    // Apply search filters if an admin is looking for a specific student
     if (search) {
-      baseQuery += ' AND (u.name LIKE ? OR u.email LIKE ? OR u.phone LIKE ? OR sp.student_id LIKE ?)';
-      const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+      query += ` AND (u.name LIKE ? OR u.email LIKE ? OR u.username LIKE ? OR sp.student_id LIKE ?)`;
+      countQuery += ` AND (name LIKE ? OR email LIKE ? OR username LIKE ? OR id IN (SELECT user_id FROM student_profiles WHERE student_id LIKE ?))`;
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
     }
 
-    if (department) {
-      baseQuery += ' AND sp.department LIKE ?';
-      params.push(`%${department}%`);
-    }
-
-    if (batch_year) {
-      baseQuery += ' AND sp.batch_year = ?';
-      params.push(batch_year);
-    }
-
-    let query = `SELECT u.*, sp.student_id, sp.semester, sp.department, sp.batch_year` + baseQuery + ` LIMIT ? OFFSET ?`;
-    let countQuery = `SELECT COUNT(*) as total` + baseQuery;
+    query += ` ORDER BY u.created_at DESC LIMIT ? OFFSET ?`;
+    
+    // Warning: params array is cloned and modified separately for query vs countQuery 
+    // because countQuery doesn't need LIMIT and OFFSET
+    const queryParams = [...params, parseInt(limit), offset];
 
     const connection = await pool.getConnection();
-
     const [countResult] = await connection.query(countQuery, params);
     const total = countResult[0].total;
 
-    let queryParams = [...params, parseInt(limit), offset];
+    // Fetch the actual student data
     const [users] = await connection.query(query, queryParams);
     connection.release();
 
@@ -58,199 +57,112 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-
-// Get user by ID
-const getUserById = async (req, res) => {
+// ==========================================
+// 2. ADD A NEW STUDENT
+// ==========================================
+const addStudent = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { name, email, phone, address, username, password, student_id, semester, department, batch_year } = req.body;
 
-    const connection = await pool.getConnection();
-    const [user] = await connection.query(`
-      SELECT u.*, sp.student_id, sp.semester, sp.department, sp.batch_year
-      FROM users u
-      LEFT JOIN student_profiles sp ON u.id = sp.user_id
-      WHERE u.id = ?
-    `, [id]);
-    connection.release();
-
-    if (user.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
+    // Validate fundamental fields
+    if (!name || !email || !username || !password) {
+      return res.status(400).json({ message: 'Required fields missing' });
     }
 
-    res.json(user[0]);
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction(); // Wrap in transaction because we are inserting into two distinct tables
+
+      // Hash the provided password with bcrypt
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Step 1: Insert core user credentials into primary 'users' table
+      const [userResult] = await connection.query(
+        'INSERT INTO users (name, email, phone, address, username, password, role) VALUES (?, ?, ?, ?, ?, ?, "student")',
+        [name, email, phone || null, address || null, username, hashedPassword]
+      );
+
+      const userId = userResult.insertId;
+
+      // Step 2: Insert student-specific academic details into 'student_profiles' linking back via 'userId'
+      if (student_id || semester || department || batch_year) {
+         await connection.query(
+          'INSERT INTO student_profiles (user_id, student_id, semester, department, batch_year) VALUES (?, ?, ?, ?, ?)',
+          [userId, student_id || null, semester || null, department || null, batch_year || null]
+         );
+      }
+
+      await connection.commit(); // Save changes
+      res.status(201).json({ message: 'Student added successfully', userId });
+    } catch (err) {
+      await connection.rollback(); // Undo if failure
+      
+      // Handle known MySQL constraint violation errors nicely
+      if (err.code === 'ER_DUP_ENTRY') {
+        if (err.message.includes('email')) return res.status(400).json({ message: 'Email already exists' });
+        if (err.message.includes('username')) return res.status(400).json({ message: 'Username already exists' });
+        if (err.message.includes('student_id')) return res.status(400).json({ message: 'Student ID already exists' });
+      }
+      throw err;
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// Add new user
-const addUser = async (req, res) => {
+// ==========================================
+// 3. EDIT EXISTING STUDENT
+// ==========================================
+const updateStudent = async (req, res) => {
   try {
-    const { name, email, phone, address, password, role = 'student', student_id, semester, department, batch_year } = req.body;
-
-    if (!name || !email) {
-      return res.status(400).json({ message: 'Name and email are required' });
-    }
-
-    const username = email;
-    const defaultPassword = password || (role === 'admin' ? 'admin123' : 'student123');
-    const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+    const { id } = req.params;
+    const { name, email, phone, address, student_id, semester, department, batch_year } = req.body;
 
     const connection = await pool.getConnection();
-
     try {
-      await connection.beginTransaction();
+      await connection.beginTransaction(); // Wrap in a transaction
 
-      if (role === 'admin') {
+      // Ensure the user being updated actually exists
+      const [existingUser] = await connection.query('SELECT * FROM users WHERE id = ? AND role = "student"', [id]);
+      if (existingUser.length === 0) {
+        await connection.rollback();
+        return res.status(404).json({ message: 'Student not found' });
+      }
+
+      // Update core tracking variables in 'users' table
+      await connection.query(
+        'UPDATE users SET name = COALESCE(?, name), email = COALESCE(?, email), phone = COALESCE(?, phone), address = COALESCE(?, address) WHERE id = ?',
+        [name, email, phone, address, id]
+      );
+
+      // Check if this student already has a profile in 'student_profiles'
+      const [existingProfile] = await connection.query('SELECT * FROM student_profiles WHERE user_id = ?', [id]);
+      
+      if (existingProfile.length > 0) {
+        // Update existing profile details
         await connection.query(
-          'INSERT INTO admin (username, email, password) VALUES (?, ?, ?)',
-          [username, email, hashedPassword]
+          'UPDATE student_profiles SET student_id = COALESCE(?, student_id), semester = COALESCE(?, semester), department = COALESCE(?, department), batch_year = COALESCE(?, batch_year) WHERE user_id = ?',
+          [student_id, semester, department, batch_year, id]
         );
-        await connection.query(
-          'INSERT INTO users (name, email, phone, address, username, password, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [name, email, phone || null, address || null, username, hashedPassword, 'admin']
-        );
-      } else {
-        const [userResult] = await connection.query(
-          'INSERT INTO users (name, email, phone, address, username, password, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [name, email, phone || null, address || null, username, hashedPassword, 'student']
-        );
-        
-        const newUserId = userResult.insertId;
-        
+      } else if (student_id || semester || department || batch_year) {
+        // Or create an entry if one for some reason didn't exist
         await connection.query(
           'INSERT INTO student_profiles (user_id, student_id, semester, department, batch_year) VALUES (?, ?, ?, ?, ?)',
-          [newUserId, student_id || null, semester || null, department || null, batch_year || null]
+          [id, student_id, semester, department, batch_year]
         );
       }
 
       await connection.commit();
-      res.status(201).json({ message: `${role.charAt(0).toUpperCase() + role.slice(1)} added successfully` });
+      res.json({ message: 'Student updated successfully' });
     } catch (err) {
       await connection.rollback();
-      throw err;
-    } finally {
-      connection.release();
-    }
-  } catch (error) {
-    console.error(error);
-    if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(400).json({ message: 'Email, Username, or Student ID already exists' });
-    }
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Update user
-const updateUser = async (req, res) => {
-  try {
-    const { id } = req.params;
-    let { name, email, phone, address, student_id, semester, department, batch_year } = req.body;
-
-    // Restrict what students can update: only non-sensitive profile fields
-    if (req.user && req.user.role === 'student') {
-      // Ignore attempts to change fundamental identity fields
-      name = undefined;
-      email = undefined;
-    }
-
-    const connection = await pool.getConnection();
-
-    try {
-      await connection.beginTransaction();
-
-      const [user] = await connection.query('SELECT * FROM users WHERE id = ?', [id]);
-      if (user.length === 0) {
-        connection.release();
-        return res.status(404).json({ message: 'User not found' });
+      if (err.code === 'ER_DUP_ENTRY') {
+         if (err.message.includes('email')) return res.status(400).json({ message: 'Email belongs to another user' });
+         if (err.message.includes('student_id')) return res.status(400).json({ message: 'Student ID belongs to another user' });
       }
-
-      await connection.query(
-        'UPDATE users SET name = ?, email = ?, phone = ?, address = ? WHERE id = ?',
-        [
-          name !== undefined ? name : user[0].name, 
-          email !== undefined ? email : user[0].email, 
-          phone !== undefined ? phone : user[0].phone, 
-          address !== undefined ? address : user[0].address, 
-          id
-        ]
-      );
-
-      if (user[0].role === 'student') {
-        const [profile] = await connection.query('SELECT * FROM student_profiles WHERE user_id = ?', [id]);
-        
-        if (profile.length > 0) {
-          await connection.query(
-            'UPDATE student_profiles SET student_id = ?, semester = ?, department = ?, batch_year = ? WHERE user_id = ?',
-            [
-              student_id !== undefined ? student_id : profile[0].student_id,
-              semester !== undefined ? semester : profile[0].semester,
-              department !== undefined ? department : profile[0].department,
-              batch_year !== undefined ? batch_year : profile[0].batch_year,
-              id
-            ]
-          );
-        } else {
-          await connection.query(
-            'INSERT INTO student_profiles (user_id, student_id, semester, department, batch_year) VALUES (?, ?, ?, ?, ?)',
-            [id, student_id || null, semester || null, department || null, batch_year || null]
-          );
-        }
-      }
-
-      await connection.commit();
-      res.json({ message: 'User updated successfully' });
-    } catch (err) {
-      await connection.rollback();
-      throw err;
-    } finally {
-      connection.release();
-    }
-  } catch (error) {
-    console.error(error);
-    if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(400).json({ message: 'Email or Student ID already exists' });
-    }
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-
-// Delete user
-const deleteUser = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const connection = await pool.getConnection();
-
-    try {
-      await connection.beginTransaction();
-
-      const [user] = await connection.query('SELECT * FROM users WHERE id = ?', [id]);
-      if (user.length === 0) {
-        connection.release();
-        return res.status(404).json({ message: 'User not found' });
-      }
-
-      const [issued] = await connection.query(
-        'SELECT COUNT(*) as count FROM issued_books WHERE user_id = ? AND status = "issued"',
-        [id]
-      );
-
-      if (issued[0].count > 0) {
-        connection.release();
-        return res.status(400).json({ message: 'Cannot delete user with issued books' });
-      }
-
-      await connection.query('DELETE FROM issued_books WHERE user_id = ?', [id]);
-      await connection.query('DELETE FROM student_profiles WHERE user_id = ?', [id]);
-      await connection.query('DELETE FROM users WHERE id = ?', [id]);
-      
-      await connection.commit();
-      res.json({ message: 'User deleted successfully' });
-    } catch (err) {
-      await connection.rollback();
       throw err;
     } finally {
       connection.release();
@@ -261,6 +173,36 @@ const deleteUser = async (req, res) => {
   }
 };
 
-module.exports = { getAllUsers, getUserById, addUser, updateUser, deleteUser };
+// ==========================================
+// 4. DELETE A STUDENT
+// ==========================================
+const deleteStudent = async (req, res) => {
+   try {
+     const { id } = req.params;
+     const connection = await pool.getConnection();
+     
+     // Cannot delete a student if they still have unreturned books
+     const [activeIssues] = await connection.query(
+       'SELECT count(*) as count FROM issued_books WHERE user_id = ? AND status = "issued"',
+       [id]
+     );
 
+     if (activeIssues[0].count > 0) {
+        connection.release();
+        return res.status(400).json({ message: 'Cannot delete student. They have unreturned books.' });
+     }
 
+     // Due to ON DELETE CASCADE constraints configured in database.sql,
+     // deleting from the 'users' table will automatically wipe their 'student_profiles'
+     // and their returned 'issued_books' history.
+     await connection.query('DELETE FROM users WHERE id = ? AND role = "student"', [id]);
+     
+     connection.release();
+     res.json({ message: 'Student deleted successfully' });
+   } catch (error) {
+     console.error(error);
+     res.status(500).json({ message: 'Server error' });
+   }
+};
+
+module.exports = { getAllStudents, addStudent, updateStudent, deleteStudent };

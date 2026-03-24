@@ -36,6 +36,7 @@ const Issue = () => {
 
   const [issueForm, setIssueForm] = useState({
     book_id: '',
+    copy_number: '',
     user_id: '',
     issue_date: new Date().toISOString().split('T')[0],
     due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -79,10 +80,21 @@ const Issue = () => {
   const handleIssueBook = async (e) => {
     e.preventDefault();
     try {
-      await issueBook(issueForm);
-      setSuccess('Book successfully issued');
+      const payload = {
+        ...issueForm,
+        copy_number: issueForm.copy_number ? parseInt(issueForm.copy_number, 10) : undefined,
+      };
+      const res = await issueBook(payload);
+      const copyCode = res.data?.copy_code;
+      const copyNumber = res.data?.copy_number;
+      setSuccess(
+        copyCode
+          ? `Book successfully issued (Copy No: ${copyNumber || 'N/A'}, Code: ${copyCode})`
+          : 'Book successfully issued'
+      );
       setIssueForm({
         book_id: '',
+        copy_number: '',
         user_id: '',
         issue_date: new Date().toISOString().split('T')[0],
         due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -228,6 +240,8 @@ const Issue = () => {
                         <div>
                           <p className="font-bold text-slate-900 leading-tight">{record.title}</p>
                           <p className="text-xs font-medium text-slate-400 mt-0.5">{record.author}</p>
+                          <p className="text-[10px] font-bold text-slate-500 mt-1">Copy No: {record.copy_number || 'N/A'}</p>
+                          <p className="text-[10px] font-bold text-indigo-500 mt-1">Copy: {record.copy_code || 'N/A'}</p>
                         </div>
                       </div>
                     </td>
@@ -323,7 +337,7 @@ const Issue = () => {
                     <select
                       required
                       value={issueForm.book_id}
-                      onChange={(e) => setIssueForm({ ...issueForm, book_id: e.target.value })}
+                      onChange={(e) => setIssueForm({ ...issueForm, book_id: e.target.value, copy_number: '' })}
                       className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-rose-500/20 text-slate-900 font-bold appearance-none bg-no-repeat bg-[right_1.25rem_center]"
                     >
                       <option value="">Choose Book...</option>
@@ -331,6 +345,21 @@ const Issue = () => {
                         <option key={book.id} value={book.id}>{book.title} ({book.available_quantity} left)</option>
                       ))}
                     </select>
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Copy Number (Optional Manual Selection)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={issueForm.copy_number}
+                      onChange={(e) => setIssueForm({ ...issueForm, copy_number: e.target.value })}
+                      className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-rose-500/20 text-slate-900 font-bold"
+                      placeholder="Type copy number like 1, 2, 3..."
+                    />
+                    <p className="text-[10px] text-slate-400 font-semibold">
+                      Leave blank to auto-assign the first available copy.
+                    </p>
                   </div>
 
                   <div className="space-y-2 md:col-span-2">

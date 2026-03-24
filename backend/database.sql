@@ -6,6 +6,8 @@ USE library_management;
 
 -- Drop child table first because of foreign keys
 DROP TABLE IF EXISTS issued_books;
+DROP TABLE IF EXISTS book_copies;
+DROP TABLE IF EXISTS student_profiles;
 DROP TABLE IF EXISTS books;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS admin;
@@ -56,21 +58,50 @@ CREATE TABLE books (
   INDEX idx_book_isbn (isbn)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+CREATE TABLE book_copies (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  book_id INT NOT NULL,
+  copy_number INT NOT NULL,
+  copy_code VARCHAR(64) NOT NULL UNIQUE,
+  status ENUM('available', 'issued', 'lost', 'damaged') NOT NULL DEFAULT 'available',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  INDEX idx_copy_book_id (book_id),
+  INDEX idx_copy_number (copy_number),
+  
+  INDEX idx_copy_status (status),
+  UNIQUE KEY uq_copy_book_number (book_id, copy_number),
+
+  CONSTRAINT fk_copy_book
+    FOREIGN KEY (book_id) REFERENCES books(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 CREATE TABLE issued_books (
   id INT PRIMARY KEY AUTO_INCREMENT,
+  copy_id INT NOT NULL,
   book_id INT NOT NULL,
   user_id INT NOT NULL,
   issued_date DATE NOT NULL,
   due_date DATE NOT NULL,
   return_date DATE DEFAULT NULL,
   status ENUM('issued', 'returned') NOT NULL DEFAULT 'issued',
+  active_issue TINYINT GENERATED ALWAYS AS (CASE WHEN status = 'issued' THEN 1 ELSE NULL END) STORED,
   fine_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
+  INDEX idx_issued_copy_id (copy_id),
   INDEX idx_issued_book_id (book_id),
   INDEX idx_issued_user_id (user_id),
   INDEX idx_issued_status (status),
+  UNIQUE KEY uq_active_copy_issue (copy_id, active_issue),
+  UNIQUE KEY uq_active_user_book_issue (user_id, book_id, active_issue),
+
+  CONSTRAINT fk_issued_books_copy
+    FOREIGN KEY (copy_id) REFERENCES book_copies(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
 
   CONSTRAINT fk_issued_books_book
     FOREIGN KEY (book_id) REFERENCES books(id)

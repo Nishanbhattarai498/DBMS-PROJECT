@@ -7,6 +7,7 @@ const authRoutes = require('./routes/authRoutes');
 const bookRoutes = require('./routes/bookRoutes');
 const userRoutes = require('./routes/userRoutes');
 const issueRoutes = require('./routes/issueRoutes');
+const { bootstrapSchema } = require('./utils/schemaBootstrap');
 
 const app = express();
 
@@ -33,6 +34,17 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+
+const startServer = async () => {
+  try {
+    await bootstrapSchema();
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Unable to start server due to database initialization error.');
+    process.exit(1);
+  }
+};
+
+startServer();

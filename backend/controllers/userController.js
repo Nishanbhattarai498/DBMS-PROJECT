@@ -1,31 +1,50 @@
 const pool = require('../config/database'); // Import DB connection
 const bcrypt = require('bcryptjs'); // For potentially hashing passwords during user creation
 
+const normalizeRole = (role) => (role === 'admin' ? 'admin' : 'student');
+
 // ==========================================
-// 1. GET ALL STUDENTS (With pagination and search)
+// 1. GET ALL USERS (With pagination and search)
 // ==========================================
 const getAllStudents = async (req, res) => {
   try {
-    const { search, page = 1, limit = 10 } = req.query;
+    const { search, page = 1, limit = 10, department, batch_year } = req.query;
     const offset = (page - 1) * limit;
 
-    // Join the main `users` table with the `student_profiles` detail table
+    // Join all managed accounts, and enrich students with their academic profile when present.
     let query = `
       SELECT u.id, u.name, u.email, u.phone, u.address, u.username, u.role, u.created_at,
              sp.student_id, sp.semester, sp.department, sp.batch_year
       FROM users u
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
-      WHERE u.role = 'student'
+      WHERE 1 = 1
     `;
-    let countQuery = `SELECT COUNT(*) as total FROM users WHERE role = 'student'`;
+    let countQuery = `
+      SELECT COUNT(*) as total
+      FROM users u
+      LEFT JOIN student_profiles sp ON u.id = sp.user_id
+      WHERE 1 = 1
+    `;
     let params = [];
 
-    // Apply search filters if an admin is looking for a specific student
+    // Apply search filters if an admin is looking for a specific member.
     if (search) {
       query += ` AND (u.name LIKE ? OR u.email LIKE ? OR u.username LIKE ? OR sp.student_id LIKE ?)`;
-      countQuery += ` AND (name LIKE ? OR email LIKE ? OR username LIKE ? OR id IN (SELECT user_id FROM student_profiles WHERE student_id LIKE ?))`;
       const searchPattern = `%${search}%`;
       params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+      countQuery += ` AND (u.name LIKE ? OR u.email LIKE ? OR u.username LIKE ? OR sp.student_id LIKE ?)`;
+    }
+
+    if (department) {
+      query += ` AND sp.department LIKE ?`;
+      countQuery += ` AND sp.department LIKE ?`;
+      params.push(`%${department}%`);
+    }
+
+    if (batch_year) {
+      query += ` AND sp.batch_year = ?`;
+      countQuery += ` AND sp.batch_year = ?`;
+      params.push(parseInt(batch_year, 10));
     }
 
     query += ` ORDER BY u.created_at DESC LIMIT ? OFFSET ?`;
@@ -58,11 +77,24 @@ const getAllStudents = async (req, res) => {
 };
 
 // ==========================================
-// 2. ADD A NEW STUDENT
+// 2. ADD A NEW USER
 // ==========================================
 const addStudent = async (req, res) => {
   try {
-    const { name, email, phone, address, username, password, student_id, semester, department, batch_year } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      address,
+      username,
+      password,
+      role,
+      student_id,
+      semester,
+      department,
+      batch_year,
+    } = req.body;
+    const normalizedRole = normalizeRole(role);
 
     // Validate fundamental fields
     if (!name || !email || !username || !password) {
@@ -78,14 +110,14 @@ const addStudent = async (req, res) => {
 
       // Step 1: Insert core user credentials into primary 'users' table
       const [userResult] = await connection.query(
-        'INSERT INTO users (name, email, phone, address, username, password, role) VALUES (?, ?, ?, ?, ?, ?, "student")',
-        [name, email, phone || null, address || null, username, hashedPassword]
+        'INSERT INTO users (name, email, phone, address, username, password, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [name, email, phone || null, address || null, username, hashedPassword, normalizedRole]
       );
 
       const userId = userResult.insertId;
 
-      // Step 2: Insert student-specific academic details into 'student_profiles' linking back via 'userId'
-      if (student_id || semester || department || batch_year) {
+      // Step 2: Insert student-specific academic details only for student accounts.
+      if (normalizedRole === 'student' && (student_id || semester || department || batch_year)) {
          await connection.query(
           'INSERT INTO student_profiles (user_id, student_id, semester, department, batch_year) VALUES (?, ?, ?, ?, ?)',
           [userId, student_id || null, semester || null, department || null, batch_year || null]
@@ -93,7 +125,7 @@ const addStudent = async (req, res) => {
       }
 
       await connection.commit(); // Save changes
-      res.status(201).json({ message: 'Student added successfully', userId });
+      res.status(201).json({ message: `${normalizedRole === 'admin' ? 'Admin' : 'Student'} added successfully`, userId });
     } catch (err) {
       await connection.rollback(); // Undo if failure
       
@@ -114,49 +146,50 @@ const addStudent = async (req, res) => {
 };
 
 // ==========================================
-// 3. EDIT EXISTING STUDENT
+// 3. EDIT EXISTING USER
 // ==========================================
 const updateStudent = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, address, student_id, semester, department, batch_year } = req.body;
+    const { name, email, phone, address, role, student_id, semester, department, batch_year } = req.body;
+    const normalizedRole = normalizeRole(role);
 
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction(); // Wrap in a transaction
 
       // Ensure the user being updated actually exists
-      const [existingUser] = await connection.query('SELECT * FROM users WHERE id = ? AND role = "student"', [id]);
+      const [existingUser] = await connection.query('SELECT * FROM users WHERE id = ?', [id]);
       if (existingUser.length === 0) {
         await connection.rollback();
-        return res.status(404).json({ message: 'Student not found' });
+        return res.status(404).json({ message: 'User not found' });
       }
 
       // Update core tracking variables in 'users' table
       await connection.query(
-        'UPDATE users SET name = COALESCE(?, name), email = COALESCE(?, email), phone = COALESCE(?, phone), address = COALESCE(?, address) WHERE id = ?',
-        [name, email, phone, address, id]
+        'UPDATE users SET name = COALESCE(?, name), email = COALESCE(?, email), phone = COALESCE(?, phone), address = COALESCE(?, address), role = ? WHERE id = ?',
+        [name, email, phone, address, normalizedRole, id]
       );
 
-      // Check if this student already has a profile in 'student_profiles'
+      // Keep the student profile aligned with the role currently assigned to the account.
       const [existingProfile] = await connection.query('SELECT * FROM student_profiles WHERE user_id = ?', [id]);
       
-      if (existingProfile.length > 0) {
-        // Update existing profile details
+      if (normalizedRole === 'student' && existingProfile.length > 0) {
         await connection.query(
           'UPDATE student_profiles SET student_id = COALESCE(?, student_id), semester = COALESCE(?, semester), department = COALESCE(?, department), batch_year = COALESCE(?, batch_year) WHERE user_id = ?',
           [student_id, semester, department, batch_year, id]
         );
-      } else if (student_id || semester || department || batch_year) {
-        // Or create an entry if one for some reason didn't exist
+      } else if (normalizedRole === 'student' && (student_id || semester || department || batch_year)) {
         await connection.query(
           'INSERT INTO student_profiles (user_id, student_id, semester, department, batch_year) VALUES (?, ?, ?, ?, ?)',
           [id, student_id, semester, department, batch_year]
         );
+      } else if (normalizedRole === 'admin' && existingProfile.length > 0) {
+        await connection.query('DELETE FROM student_profiles WHERE user_id = ?', [id]);
       }
 
       await connection.commit();
-      res.json({ message: 'Student updated successfully' });
+      res.json({ message: `${normalizedRole === 'admin' ? 'Admin' : 'Student'} updated successfully` });
     } catch (err) {
       await connection.rollback();
       if (err.code === 'ER_DUP_ENTRY') {
@@ -174,7 +207,7 @@ const updateStudent = async (req, res) => {
 };
 
 // ==========================================
-// 4. DELETE A STUDENT
+// 4. DELETE A USER
 // ==========================================
 const deleteStudent = async (req, res) => {
    try {
@@ -189,16 +222,16 @@ const deleteStudent = async (req, res) => {
 
      if (activeIssues[0].count > 0) {
         connection.release();
-        return res.status(400).json({ message: 'Cannot delete student. They have unreturned books.' });
+        return res.status(400).json({ message: 'Cannot delete user. They have unreturned books.' });
      }
 
      // Due to ON DELETE CASCADE constraints configured in database.sql,
      // deleting from the 'users' table will automatically wipe their 'student_profiles'
      // and their returned 'issued_books' history.
-     await connection.query('DELETE FROM users WHERE id = ? AND role = "student"', [id]);
+     await connection.query('DELETE FROM users WHERE id = ?', [id]);
      
      connection.release();
-     res.json({ message: 'Student deleted successfully' });
+     res.json({ message: 'User deleted successfully' });
    } catch (error) {
      console.error(error);
      res.status(500).json({ message: 'Server error' });

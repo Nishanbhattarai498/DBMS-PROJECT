@@ -42,6 +42,25 @@ const Users = () => {
     role: 'student', student_id: '', semester: '', department: '', batch_year: '',
   });
 
+  const buildPayload = (data) => {
+    if (data.role === 'admin') {
+      return {
+        name: data.name,
+        email: data.email,
+        username: data.username,
+        phone: data.phone,
+        address: data.address,
+        password: data.password,
+        role: 'admin',
+      };
+    }
+
+    return {
+      ...data,
+      role: 'student',
+    };
+  };
+
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
@@ -85,12 +104,14 @@ const Users = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = buildPayload(formData);
+
       if (editingId) {
-        await updateUser(editingId, formData);
-        setSuccess('Member profile updated');
+        await updateUser(editingId, payload);
+        setSuccess(`${payload.role === 'admin' ? 'Admin' : 'Student'} profile updated`);
       } else {
-        await addUser(formData);
-        setSuccess('New member registered');
+        await addUser(payload);
+        setSuccess(`New ${payload.role} account registered`);
       }
       resetForm();
       fetchUsers();
@@ -118,7 +139,15 @@ const Users = () => {
   };
 
   const handleEdit = (user) => {
-    setFormData({ ...user, password: '' }); // Don't show password on edit
+    setFormData({
+      ...user,
+      role: user.role || 'student',
+      password: '',
+      student_id: user.student_id || '',
+      semester: user.semester || '',
+      department: user.department || '',
+      batch_year: user.batch_year || '',
+    }); // Don't show password on edit
     setEditingId(user.id);
     setShowForm(true);
   };
@@ -403,7 +432,16 @@ const Users = () => {
                     <select
                       className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-indigo-500/50 focus:bg-white transition-all outline-none text-slate-900 font-bold appearance-none bg-no-repeat bg-[right_1rem_center]"
                       value={formData.role}
-                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                      onChange={(e) => {
+                        const nextRole = e.target.value;
+                        setFormData({
+                          ...formData,
+                          role: nextRole,
+                          ...(nextRole === 'admin'
+                            ? { student_id: '', semester: '', department: '', batch_year: '' }
+                            : {}),
+                        });
+                      }}
                     >
                       <option value="student">Student Account</option>
                       <option value="admin">Admin Account</option>

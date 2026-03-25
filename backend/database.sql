@@ -118,3 +118,21 @@ CREATE TABLE IF NOT EXISTS issued_books (
 -- Uses IGNORE so it doesn't crash the server if the admin already exists
 INSERT IGNORE INTO admin (username, email, password)
 VALUES ('admin', 'admin@library.com', '$2a$10$0YjbRpisSOtnYM7Ua9CDs.bbOSA5wS6yQ7QZfaJC6bEQ4B2bXAeUu');
+
+-- Default demo student (password for student123)
+-- Uses IGNORE/conditional insert so it can safely run on every startup
+INSERT IGNORE INTO users (name, email, phone, address, username, password, role)
+VALUES (
+  'Demo Student',
+  'student@library.com',
+  NULL,
+  'Library Demo Account',
+  'student',
+  '$2a$10$g8/IBUDq/gPxxqMtam28SuQRNZsa4mbvOqFtPpl76.Ssdt3VdLMKi',
+  'student'
+);
+
+INSERT IGNORE INTO student_profiles (user_id, student_id, semester, department, batch_year)
+SELECT id, 'DEMO-STUDENT-001', 1, 'Computer Science', YEAR(CURDATE())
+FROM users
+WHERE username = 'student';

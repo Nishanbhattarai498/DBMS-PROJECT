@@ -58,9 +58,11 @@ const login = async (req, res) => {
         const isPasswordValid = await bcrypt.compare(password, user.password);
         
         if (isPasswordValid) {
-          // Generate student token
+          const userRole = user.role === 'admin' ? 'admin' : 'student';
+
+          // Generate token based on the persisted role in the users table
           const token = jwt.sign(
-            { id: user.id, username: user.username, role: 'student' },
+            { id: user.id, username: user.username, role: userRole },
             process.env.JWT_SECRET || 'your_secret_key_change_this',
             { expiresIn: process.env.JWT_EXPIRE || '7d' }
           );
@@ -68,7 +70,7 @@ const login = async (req, res) => {
           return res.json({
             message: 'Login successful',
             token,
-            user: { id: user.id, username: user.username, email: user.email, role: 'student' },
+            user: { id: user.id, username: user.username, email: user.email, role: userRole },
           });
         }
       }
